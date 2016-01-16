@@ -706,8 +706,11 @@ class YoutubeDL(object):
         It will also download the videos if 'download'.
         Returns the resolved ie_result.
         """
+        print('\nFirst IE_Result') # NOTE Debug
+        print(ie_result) # NOTE Debug
 
         result_type = ie_result.get('_type', 'video')
+        print(result_type) # NOTE Debug
 
         if result_type in ('url', 'url_transparent'):
             extract_flat = self.params.get('extract_flat', False)
@@ -719,6 +722,8 @@ class YoutubeDL(object):
 
         if result_type == 'video':
             self.add_extra_info(ie_result, extra_info)
+            print('\nInside video result type') # NOTE Debug
+            print(ie_result) # NOTE Debug
             return self.process_video_result(ie_result, download=download)
         elif result_type == 'url':
             # We have to add extra_info to the results because it may be
@@ -1104,6 +1109,9 @@ class YoutubeDL(object):
                             yield matches[-1]
             elif selector.type == MERGE:
                 def _merge(formats_info):
+                    print('\n') # NOTE Debug
+                    print('Merge formats_info:') # NOTE Debug
+                    print(formats_info) # NOTE Debug
                     format_1, format_2 = [f['format_id'] for f in formats_info]
                     # The first format must contain the video and the
                     # second the audio
@@ -1307,6 +1315,8 @@ class YoutubeDL(object):
             format['http_headers'] = self._calc_headers(full_format_info)
 
         # TODO Central sorting goes here
+        print("\nFormats: ") # NOTE Debug
+        print(formats) # NOTE Debug
 
         if formats[0] is not info_dict:
             # only set the 'formats' fields if the original info_dict list them
@@ -1325,7 +1335,8 @@ class YoutubeDL(object):
         if req_format is None:
             req_format_list = []
             if (self.params.get('outtmpl', DEFAULT_OUTTMPL) != '-' and
-                    info_dict['extractor'] in ['youtube', 'ted'] and
+                    info_dict['extractor'] in ['youtube', 'ted', 'SVTPlay'] and
+                    #info_dict['extractor'] in ['youtube', 'ted'] and
                     not info_dict.get('is_live')):
                 merger = FFmpegMergerPP(self)
                 if merger.available and merger.can_merge():
@@ -1333,6 +1344,9 @@ class YoutubeDL(object):
             req_format_list.append('best')
             req_format = '/'.join(req_format_list)
         format_selector = self.build_format_selector(req_format)
+        print('\n') # NOTE Debug
+        print('Format selector') # NOTE Debug
+        print(list(format_selector(formats))) # NOTE Debug
         formats_to_download = list(format_selector(formats))
         if not formats_to_download:
             raise ExtractorError('requested format not available',
