@@ -333,6 +333,7 @@ from .kuwo import (
 from .la7 import LA7IE
 from .laola1tv import Laola1TvIE
 from .lecture2go import Lecture2GoIE
+from .lemonde import LemondeIE
 from .letv import (
     LetvIE,
     LetvTvIE,
@@ -777,7 +778,7 @@ from .udemy import (
     UdemyCourseIE
 )
 from .udn import UDNEmbedIE
-from .ultimedia import UltimediaIE
+from .digiteka import DigitekaIE
 from .unistra import UnistraIE
 from .urort import UrortIE
 from .ustream import UstreamIE, UstreamChannelIE
