@@ -1038,6 +1038,9 @@ class YoutubeDL(object):
             return selectors
 
         def _build_selector_function(selector):
+            print('\n') # NOTE Debug
+            print('Selector: ') # NOTE Debug
+            print(selector) # NOTE Debug
             if isinstance(selector, list):
                 fs = [_build_selector_function(s) for s in selector]
 

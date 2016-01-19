@@ -5,6 +5,7 @@ import re
 from .common import FileDownloader
 from ..utils import (
     int_or_none,
+    str_or_none,
     sanitized_Request
 )
 
@@ -17,33 +18,34 @@ class DashSegmentsFD(FileDownloader):
         self.report_destination(filename)
         tmpfilename = self.temp_name(filename)
         base_url = info_dict['url']
-        try:
+        if 'segment_urls' in info_dict:
             segment_urls = info_dict['segment_urls']
-        except KeyError:
+        else:
             segment_urls = None
 
-        try:
+        if 'incremental_byte_ranges' in info_dict:
             incremental_byte_ranges = info_dict['incremental_byte_ranges']
-        except KeyError:
+        else:
             incremental_byte_ranges = False            
 
+        is_test = self.params.get('test', False)
+
         if incremental_byte_ranges is True:
-            remaining_bytes = info_dict['filesize'] - 1
+            remaining_bytes = self._TEST_FILE_SIZE if is_test else int_or_none(info_dict['filesize']) - 1
             total_bytes = remaining_bytes
             start_bytes = int_or_none(info_dict['initialization_range'].split('-')[0])
-            incremental_bytes = info_dict['incremental_bytes']
+            incremental_bytes = int_or_none(info_dict['incremental_bytes'])
             end_bytes = remaining_bytes if remaining_bytes < incremental_bytes else incremental_bytes
         else:
-            is_test = self.params.get('test', False)
             remaining_bytes = self._TEST_FILE_SIZE if is_test else None
 
         byte_counter = 0
 
-        def append_url_to_file(outf, target_url, target_name, remaining_bytes=None):
+        def append_url_to_file(outf, target_url, target_name, remaining_bytes=None, start_bytes=None, end_bytes=None):
             self.to_screen('[DashSegments] %s: Downloading %s' % (info_dict['id'], target_name))
             req = sanitized_Request(target_url)
             if remaining_bytes is not None:
-                if incremental_byte_ranges is True:
+                if incremental_byte_ranges is True and start_bytes is not None and end_bytes is not None:
                     req.add_header('Range', 'bytes=%d-%d' % (start_bytes, end_bytes))
                 else:
                     req.add_header('Range', 'bytes=0-%d' % (remaining_bytes - 1))
@@ -64,11 +66,11 @@ class DashSegmentsFD(FileDownloader):
         with open(tmpfilename, 'wb') as outf:
             if incremental_byte_ranges is True:
                 while True:
-                    print(True)
-                    append_url_to_file(
+                    #print(True) # NOTE Debug
+                    byte_counter += append_url_to_file(
                         outf, base_url,
-                        ('bytes range: %d of %d' % (start_bytes, end_bytes)),
-                        remaining_bytes)
+                        ('bytes range: %d of %d Total: %d' % (start_bytes, end_bytes, total_bytes)),
+                        remaining_bytes, start_bytes, end_bytes)
 
                     remaining_bytes -= incremental_bytes
 
@@ -77,9 +79,12 @@ class DashSegmentsFD(FileDownloader):
                     else:
                         if start_bytes == 0:
                             start_bytes += 1 # NOTE To not clash with byte ranges
+
                         start_bytes += incremental_bytes
-                        end_bytes += incremental_bytes
-                        byte_counter += incremental_bytes
+                        if remaining_bytes < incremental_bytes:
+                            end_bytes += (remaining_bytes - 1)
+                        else:
+                            end_bytes += incremental_bytes
 
             else:
                 append_url_to_file(
@@ -100,7 +105,7 @@ class DashSegmentsFD(FileDownloader):
 
         self._hook_progress({
             'downloaded_bytes': byte_counter,
-            'total_bytes': remaining_bytes if incremental_byte_ranges is True else byte_counter,
+            'total_bytes': byte_counter,
             'filename': filename,
             'status': 'finished',
         })

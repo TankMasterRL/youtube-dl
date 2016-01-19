@@ -14,6 +14,8 @@ from ..utils import (
     str_or_none,
 )
 
+import copy
+
 
 class SVTBaseIE(InfoExtractor):
     # Based upon url_basename() in 'utils.py'
@@ -43,11 +45,69 @@ class SVTBaseIE(InfoExtractor):
         request = compat_urllib_request.Request(dash_media_url, headers=headers)
         downloaded = compat_urllib_request.urlopen(request)
         media_headers = downloaded.info()
-        #print(media_headers.get('Content-Range').split('/')[1])
+        #print(media_headers.get('Content-Range').split('/')[1]) # NOTE Debug
 
         return media_headers.get('Content-Range').split('/')[1]
 
-    # Based upon _parse_dash_manifest() in the 'youtube.py' extractor
+    def _get_dash_pairs(self, formats):
+        audio_format = None
+        video_format = None
+
+        match_after_video_bitrate = 0
+
+        for format in formats:
+            if format['ext'] == 'mp4':
+                video_bitrate = int_or_none(
+                    format['url'].split('_')[1])
+                if video_bitrate > match_after_video_bitrate:
+                    video_format = format
+                    match_after_video_bitrate = video_bitrate
+
+        for format in formats:
+            if format['ext'] == 'm4a':
+                if re.search('(?:_%d_)' % match_after_video_bitrate, format['url']):
+                    audio_format = format
+
+        return (audio_format, video_format)
+
+
+    def _set_source_preference(self, formats_dict):
+        sorted_formats_dict = copy.deepcopy(formats_dict)
+        modified_formats_dict = []
+
+        def _format_key(format):
+            if 'vbr' in format:
+                return format['vbr']
+            else:
+                return format['abr']
+
+        sorted_formats_dict.sort(key=_format_key, reverse=True)
+
+        print('\n') # NOTE Debug
+        print('Sorted without preference added')
+        print(sorted_formats_dict) # NOTE Debug
+
+        i = 0
+        length = len(sorted_formats_dict)
+        while i <= (length - 1):
+            temp_dict = sorted_formats_dict[i]
+            # if "vbr" in temp_dict:
+            #     temp_dict["source_preference"] = temp_dict["vbr"]
+            # else:
+            #     temp_dict["source_preference"] = temp_dict["abr"]
+            temp_dict['source_preference'] = -(i + 1)
+
+            modified_formats_dict.append(temp_dict)
+            i += 1
+
+        print('\n') # NOTE Debug
+        print('Sorted with preference added')
+        print(modified_formats_dict) # NOTE Debug
+
+        return modified_formats_dict
+
+    # NOTE: Based upon _parse_dash_manifest method in the 'youtube.py' extractor
+    # Only support for 'on-demand'
     def _parse_dash_manifest(
         self, video_id, dash_manifest_url, fatal=True):
         #print(dash_manifest_url)
@@ -63,7 +123,7 @@ class SVTBaseIE(InfoExtractor):
         if dash_doc is False:
             return []
 
-        baseurl = self._url_basepath(dash_manifest_url)
+        base_url = self._url_basepath(dash_manifest_url)
         formats = []
         for a in dash_doc.findall('.//{urn:mpeg:dash:schema:mpd:2011}Period/{urn:mpeg:dash:schema:mpd:2011}AdaptationSet'):
         #for a in dash_doc.findall('.//{urn:mpeg:DASH:schema:MPD:2011}AdaptationSet'):
@@ -80,35 +140,40 @@ class SVTBaseIE(InfoExtractor):
                     segment_list = r.find('{urn:mpeg:dash:schema:mpd:2011}SegmentBase')
                     #print(segment_list)
                     #format_id = r.attrib['id'] # TODO Doesn't contain a valid media format tag
-                    video_url = baseurl + url_el.text
-                    #print(video_url)
-                    file_size = self._get_dash_filesize(video_url)
+                    multimedia_url = base_url + url_el.text
+                    #print(multimedia_url)
+                    file_size = self._get_dash_filesize(multimedia_url)
                     f = {
                         #'format_id': format_id, # TODO Doesn't contain a valid media format tag
                         #'format_id': int_or_none(r.attrib.get('bandwidth'), 1000),
-                        'url': video_url,
-                        'tbr': int_or_none(r.attrib.get('bandwidth'), 1000),
+                        'url': multimedia_url,
                         'filesize': file_size,
-                        'format_note': 'DASH video' if mime_type.startswith('video/') else 'DASH audio',
+                        #'format_note': 'DASH video' if mime_type.startswith('video/') else 'DASH audio',
                         'width': int_or_none(r.attrib.get('width')),
                         'height': int_or_none(r.attrib.get('height')),
                         'fps': int_or_none(r.attrib.get('frameRate')),
                     }
                     if mime_type.startswith('video/'):
                         f.update({
-                            'format-id': 'mp4-%d' % int_or_none(r.attrib.get('bandwidth'), 1000),
+                            'vbr': int_or_none(r.attrib.get('bandwidth'), 1000),
+                            'format_id': 'mp4',
+                            #'format_id': 'mp4-%d' % int_or_none(r.attrib.get('bandwidth'), 1000),
+                            #'format': 'hd',
                             'ext': 'mp4',                           
-                            'acodec': 'none',
-                            'vcodec': str_or_none(r.attrib.get('codecs')),
+                            #'acodec': 'none',
+                            #'vcodec': str_or_none(r.attrib.get('codecs')),
                             'container': 'mp4',
                         })
                     else:
                         f.update({
-                            'format-id': 'm4a-%d' % int_or_none(r.attrib.get('bandwidth'), 1000),
+                            'abr': int_or_none(r.attrib.get('bandwidth'), 1000),
+                            #'format': 'aac',
+                            'format_id': 'm4a',
+                            #'format_id': 'm4a-%d' % int_or_none(r.attrib.get('bandwidth'), 1000),
                             'ext': 'm4a',
                             'asr': int_or_none(r.attrib.get('audioSamplingRate')),
-                            'acodec': str_or_none(r.attrib.get('codecs')),
-                            'vcodec': 'none',
+                            #'acodec': str_or_none(r.attrib.get('codecs')),
+                            #'vcodec': 'none',
                             'container': 'm4a_dash',
                         })
 
@@ -117,21 +182,21 @@ class SVTBaseIE(InfoExtractor):
                         'incremental_byte_ranges': True,
                         # NOTE will these be needed in the future?
                         'initialization_range': segment_list.find('{urn:mpeg:dash:schema:mpd:2011}Initialization').attrib.get('range'),
-                        'segment_indexRange': segment_list.attrib.get('indexRange'),
+                        'segment_index_range': segment_list.attrib.get('indexRange'),
                         #
-                        'incremental_bytes': 3900,
+                        'incremental_bytes': 3900000,
                         'protocol': 'http_dash_segments',
-                        #'http-headers': {
+                        'http_headers': {
                         #    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:43.0) Gecko/20100101 Firefox/43.0',
                         #    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                         #    'Accept-Language': 'sv-SE,sv;q=0.8,en-US;q=0.5,en;q=0.3',
                         #    'Accept-Encoding': 'gzip, deflate',
                         #    'DNT': 1,
-                        #    'Origin': 'http://www.svtplay.se',
-                        #    'Connection': 'keep-alive',
-                        #},
+                            'Origin': 'http://www.svtplay.se',
+                            'Connection': 'keep-alive',
+                        },
                     })
-                    print(f)
+                    print(f) # NOTE Debug
                     formats.append(f)
                     # try:
                     #     existing_format = next(
@@ -152,6 +217,10 @@ class SVTBaseIE(InfoExtractor):
                     #     existing_format.update(f)
                 else:
                     self.report_warning('Unknown MIME type %s in DASH manifest' % mime_type)
+
+
+        formats = self._set_source_preference(formats)
+
         return formats
 
     def _extract_video(self, url, video_id):
@@ -159,9 +228,11 @@ class SVTBaseIE(InfoExtractor):
         info = self._download_json(url, video_id)
 
         title = info['context']['title']
-        thumbnail = info['context'].get('thumbnailImage')
+        program_title = info['context']['programTitle']
+        thumbnail = info['context']['thumbnailImage']
 
         video_info = info['video']
+
         formats = []
         for vr in video_info['videoReferences']:
             vurl = vr['url']
@@ -171,7 +242,9 @@ class SVTBaseIE(InfoExtractor):
                 formats.extend(self._parse_dash_manifest(
                     video_id, vurl))
                 extract_info.update({
-                    'ext': 'mp4'
+                    'format': 'mp4',
+                    'ext': 'mp4',
+                    'requested_formats': self._get_dash_pairs(formats),
                 })
             # elif ext == 'm3u8':
             #     formats.extend(self._extract_m3u8_formats(
@@ -181,26 +254,83 @@ class SVTBaseIE(InfoExtractor):
             # elif ext == 'f4m':
             #     formats.extend(self._extract_f4m_formats(
             #         vurl + '?hdcore=3.7.0', video_id,
-            #         f4m_id=vr.get('playerType')))            
+            #         f4m_id=vr.get('playerType')))
             # else:
             #     formats.append({
             #         'format_id': vr.get('playerType'),
             #         'url': vurl,
             #     })
-        self._sort_formats(formats)
-        #self.to_screen('%s' % formats)
 
-        duration = video_info.get('materialLength')
+        #self.to_screen('%s' % formats)
+        
+        duration = video_info['materialLength']
         age_limit = 18 if video_info.get('inappropriateForChildren') else 0
+
+        self._sort_formats(formats)
 
         extract_info.update({
             'id': video_id,
-            'title': title,
+            'title': '%s - %s' % (program_title, title),
             'formats': formats,
             'thumbnail': thumbnail,
             'duration': duration,
             'age_limit': age_limit,
         })
+
+        # NOTE Test with requested formats
+        # extract_info.update({
+        #     'id': video_id,
+        #     'title': '%s - %s' % (program_title, title),
+        #     'formats': formats,
+        #     'thumbnail': thumbnail,
+        #     'duration': duration,
+        #     'age_limit': age_limit,
+        #     'requested_formats': [ 
+        #         {
+        #             'incremental_byte_ranges': True,
+        #             'format_id': 'mp4',
+        #             'container': 'mp4',
+        #             'fps': 25,
+        #             'http_headers': {
+        #                 'Origin': 'http://www.svtplay.se',
+        #                 'Connection': 'keep-alive'
+        #             },
+        #             'url': 'http://svtplay20r-f.akamaihd.net/d/world/open/delivery/20160119/1373294-012A/dash-ondemand/1373294-012A-RAPPORT0930-PLAY.dif_2796_4.m4v',
+        #             'segment_index_range': '727-1970',
+        #             'height': 720,
+        #             'incremental_bytes': 3900000,
+        #             'vbr': 3265,
+        #             'ext': 'mp4',
+        #             'source_preference': -1,
+        #             'filesize': '203394286',
+        #             'initialization_range': '0-726',
+        #             'protocol': 'http_dash_segments',
+        #             'width': 1280
+        #         }, # NOTE Video
+        #         {
+        #             'asr': 48000,
+        #             'format_id': 'm4a',
+        #             'container': 'm4a_dash',
+        #             'fps': None,
+        #             'incremental_byte_ranges': True,
+        #             'url': 'http://svtplay20r-f.akamaihd.net/d/world/open/delivery/20160119/1373294-012A/dash-ondemand/1373294-012A-RAPPORT0930-PLAY.dif_2796_1.m4a',
+        #             'segment_index_range': '634-1865',
+        #             'abr': 97,
+        #             'height': None,
+        #             'width': None,
+        #             'ext': 'm4a',
+        #             'source_preference': -1,
+        #             'filesize': '7300107',
+        #             'initialization_range': '0-633',
+        #             'protocol': 'http_dash_segments',
+        #             'http_headers': {
+        #                 'Origin': 'http://www.svtplay.se',
+        #                 'Connection': 'keep-alive'
+        #             },
+        #             'incremental_bytes': 3900000
+        #         } # NOTE Audio
+        #     ]
+        # })
 
         return extract_info
 

@@ -1535,6 +1535,9 @@ class YoutubeIE(YoutubeBaseInfoExtractor):
                     # example.
                     formats = [f for f in formats if f['format_id'] not in dash_formats.keys()]
                     formats.extend(dash_formats.values())
+                    print('\n') # NOTE Debug
+                    print('Extended DASH formats') # NOTE Debug
+                    print(formats) # NOTE Debug
 
         # Check for malformed aspect ratio
         stretched_m = re.search(
