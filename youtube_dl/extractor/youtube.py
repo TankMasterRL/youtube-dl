@@ -964,6 +964,9 @@ class YoutubeIE(YoutubeBaseInfoExtractor):
         try:
             args = player_config['args']
             caption_url = args['ttsurl']
+            if not caption_url:
+                self._downloader.report_warning(err_msg)
+                return {}
             timestamp = args['timestamp']
             # We get the available subtitles
             list_params = compat_urllib_parse.urlencode({
