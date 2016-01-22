@@ -50,8 +50,8 @@ class SVTBaseIE(InfoExtractor):
         return media_headers.get('Content-Range').split('/')[1]
 
     def _get_dash_pairs(self, formats):
-        audio_format = None
         video_format = None
+        audio_format = None
 
         match_after_video_bitrate = 0
 
@@ -65,11 +65,10 @@ class SVTBaseIE(InfoExtractor):
 
         for format in formats:
             if format['ext'] == 'm4a':
-                if re.search('(?:_%d_)' % match_after_video_bitrate, format['url']):
+                if re.search(r'(?:_%d_)' % match_after_video_bitrate, format['url']):
                     audio_format = format
 
-        return (audio_format, video_format)
-
+        return (video_format, audio_format)
 
     def _set_source_preference(self, formats_dict):
         sorted_formats_dict = copy.deepcopy(formats_dict)
@@ -148,7 +147,7 @@ class SVTBaseIE(InfoExtractor):
                         #'format_id': int_or_none(r.attrib.get('bandwidth'), 1000),
                         'url': multimedia_url,
                         'filesize': file_size,
-                        #'format_note': 'DASH video' if mime_type.startswith('video/') else 'DASH audio',
+                        'format_note': 'DASH video' if mime_type.startswith('video/') else 'DASH audio',
                         'width': int_or_none(r.attrib.get('width')),
                         'height': int_or_none(r.attrib.get('height')),
                         'fps': int_or_none(r.attrib.get('frameRate')),
@@ -160,8 +159,8 @@ class SVTBaseIE(InfoExtractor):
                             #'format_id': 'mp4-%d' % int_or_none(r.attrib.get('bandwidth'), 1000),
                             #'format': 'hd',
                             'ext': 'mp4',                           
-                            #'acodec': 'none',
-                            #'vcodec': str_or_none(r.attrib.get('codecs')),
+                            'acodec': 'none',
+                            'vcodec': str_or_none(r.attrib.get('codecs')),
                             'container': 'mp4',
                         })
                     else:
@@ -172,8 +171,8 @@ class SVTBaseIE(InfoExtractor):
                             #'format_id': 'm4a-%d' % int_or_none(r.attrib.get('bandwidth'), 1000),
                             'ext': 'm4a',
                             'asr': int_or_none(r.attrib.get('audioSamplingRate')),
-                            #'acodec': str_or_none(r.attrib.get('codecs')),
-                            #'vcodec': 'none',
+                            'acodec': str_or_none(r.attrib.get('codecs')),
+                            'vcodec': 'none',
                             'container': 'm4a_dash',
                         })
 
@@ -234,6 +233,7 @@ class SVTBaseIE(InfoExtractor):
         video_info = info['video']
 
         formats = []
+        requested_formats = None
         for vr in video_info['videoReferences']:
             vurl = vr['url']
             ext = determine_ext(vurl)
@@ -241,10 +241,11 @@ class SVTBaseIE(InfoExtractor):
             if ext == 'mpd':
                 formats.extend(self._parse_dash_manifest(
                     video_id, vurl))
+                requested_formats = self._get_dash_pairs(formats)
                 extract_info.update({
                     'format': 'mp4',
                     'ext': 'mp4',
-                    'requested_formats': self._get_dash_pairs(formats),
+                    'requested_formats': requested_formats,
                 })
             # elif ext == 'm3u8':
             #     formats.extend(self._extract_m3u8_formats(
@@ -272,6 +273,8 @@ class SVTBaseIE(InfoExtractor):
             'id': video_id,
             'title': '%s - %s' % (program_title, title),
             'formats': formats,
+            # NOTE Test with requested_formats
+            #'formats': list(requested_formats),
             'thumbnail': thumbnail,
             'duration': duration,
             'age_limit': age_limit,
