@@ -16,6 +16,11 @@ from ..utils import (
 
 import copy
 
+'''
+    TODO:
+    Implement this (http://www.svt.se/videoplayer-api/video/1373294-012A)
+    multimedia info source.
+'''
 
 class SVTBaseIE(InfoExtractor):
     # Based upon url_basename() in 'utils.py'
@@ -30,7 +35,6 @@ class SVTBaseIE(InfoExtractor):
 
     def _get_dash_filesize(self, dash_media_url):
         # TODO No proxy support
-
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:43.0) Gecko/20100101 Firefox/43.0',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -49,6 +53,9 @@ class SVTBaseIE(InfoExtractor):
 
         return media_headers.get('Content-Range').split('/')[1]
 
+    '''
+        Defaults to, right now, the highest available bitrate
+    '''
     def _get_dash_pairs(self, formats):
         video_format = None
         audio_format = None
@@ -70,40 +77,97 @@ class SVTBaseIE(InfoExtractor):
 
         return (video_format, audio_format)
 
-    def _set_source_preference(self, formats_dict):
-        sorted_formats_dict = copy.deepcopy(formats_dict)
-        modified_formats_dict = []
+    def _separate_content(self, formats):
+        video_list = []
+        audio_list = []
+        match_after_video_bitrate = 0
+        selected_audio_bitrate = None
 
-        def _format_key(format):
+        for format in formats:
             if 'vbr' in format:
-                return format['vbr']
+                video_list.append(format)
             else:
-                return format['abr']
+                audio_list.append(format)
 
-        sorted_formats_dict.sort(key=_format_key, reverse=True)
+        return (video_list, audio_list)
+
+    def _content_sort(self, formats):
+        def _format_key(format):
+            return int_or_none(
+                    format['url'].split('_')[1])
+
+        formats.sort(key=_format_key, reverse=True)
+
+        return formats
+
+    def _set_preferences(self, formats):
+        copied_formats = copy.deepcopy(formats)
+        video_list, audio_list = self._separate_content(copied_formats)
+
+        video_list = self._content_sort(video_list)
+        audio_list = self._content_sort(audio_list)
 
         print('\n') # NOTE Debug
         print('Sorted without preference added')
-        print(sorted_formats_dict) # NOTE Debug
+        print(video_list) # NOTE Debug
+        print(audio_list) # NOTE Debug
 
-        i = 0
-        length = len(sorted_formats_dict)
-        while i <= (length - 1):
-            temp_dict = sorted_formats_dict[i]
-            # if "vbr" in temp_dict:
-            #     temp_dict["source_preference"] = temp_dict["vbr"]
-            # else:
-            #     temp_dict["source_preference"] = temp_dict["abr"]
-            temp_dict['source_preference'] = -(i + 1)
+        #modified_formats = []           
 
-            modified_formats_dict.append(temp_dict)
-            i += 1
+        #copied_formats.sort(key=_format_key, reverse=True)
+        
+        def _set_preference(formats, add_source=False):
+            modified_formats = []
+            temp_dict = None
+            for i, format in enumerate(formats):
+                temp_dict = format
+                if add_source is True:
+                    temp_dict['source_preference'] = -(i + 1)
+                temp_dict['preference'] = -(i + 1)
+
+                modified_formats.append(temp_dict)
+
+            return modified_formats
+
+        video_list = _set_preference(video_list,
+            True)
+        audio_list = _set_preference(audio_list,
+            False)
 
         print('\n') # NOTE Debug
         print('Sorted with preference added')
-        print(modified_formats_dict) # NOTE Debug
+        print(video_list) # NOTE Debug
+        print(audio_list) # NOTE Debug
+        
+        modified_formats = []
+        modified_formats.extend(video_list)
+        modified_formats.extend(audio_list)
 
-        return modified_formats_dict
+        return modified_formats
+
+        # video_i = 0
+        # audio_i = 0
+        # i = 0
+        # length = len(copied_formats)
+        # '''
+        #     NOTE: The conditionals depicts that there are exactly
+        #     one audio and video stream for each bitrate.
+        #     Can conflict in the future where surround sound may be added.
+        # '''
+        # while i < length and (video_i < length and audio_i < length):
+        #     temp_dict = copied_formats[i]
+        #     if 'vbr' in temp_dict:
+        #         temp_dict['source_preference'] = -(video_i + 1)
+        #         video_i += 1
+        #     else:
+        #         temp_dict['source_preference'] = -(audio_i + 1)
+        #         temp_dict['preference'] = -(audio_i + 1)
+        #         audio_i += 1
+        #     #temp_dict['source_preference'] = -(i + 1)
+        #     #temp_dict['preference'] = -(i + 1)
+
+        #     modified_formats.append(temp_dict)
+        #     i += 1
 
     # NOTE: Based upon _parse_dash_manifest method in the 'youtube.py' extractor
     # Only support for 'on-demand'
@@ -218,7 +282,7 @@ class SVTBaseIE(InfoExtractor):
                     self.report_warning('Unknown MIME type %s in DASH manifest' % mime_type)
 
 
-        formats = self._set_source_preference(formats)
+        formats = self._set_preferences(formats)
 
         return formats
 
